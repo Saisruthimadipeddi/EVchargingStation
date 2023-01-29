@@ -14,7 +14,7 @@ import org.acra.data.StringFormat
 import org.acra.ktx.initAcra
 import java.time.Duration
 
-class EvMapApplication : Application() {
+class EvMapApplication : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         val prefs = PreferenceDataSource(this)
@@ -63,5 +63,9 @@ class EvMapApplication : Application() {
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "CleanupCacheWorker", ExistingPeriodicWorkPolicy.REPLACE, cleanupCacheRequest
         )
+    }
+
+    override fun getWorkManagerConfiguration(): Configuration {
+        return Configuration.Builder().build()
     }
 }
