@@ -131,9 +131,8 @@ class ChargeLocationsRepository(
         val useClustering = shouldUseServerSideClustering(zoom)
         val apiResult = liveData {
             val refData = referenceData.await()
-            var result = api.getChargepoints(refData, bounds, zoom, useClustering, filters)
-            result = applyLocalClustering(result, zoom)
-            emit(result)
+            val result = api.getChargepoints(refData, bounds, zoom, useClustering, filters)
+            emit(applyLocalClustering(result, zoom))
             if (result.status == Status.SUCCESS) {
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
                     afterDate(),
@@ -173,10 +172,9 @@ class ChargeLocationsRepository(
         val useClustering = shouldUseServerSideClustering(zoom)
         val apiResult = liveData {
             val refData = referenceData.await()
-            var result =
+            val result =
                 api.getChargepointsRadius(refData, location, radius, zoom, useClustering, filters)
-            result = applyLocalClustering(result, zoom)
-            emit(result)
+            emit(applyLocalClustering(result, zoom))
             if (result.status == Status.SUCCESS) {
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
                     afterDate(),
