@@ -313,4 +313,5 @@
     <string name="tesla_pricing_other_times">Other times:</string>
     <string name="tesla_pricing_blocking_fee">Blocking fee: %s</string>
     <string name="average_utilization">Average Utilization</string>
+    <string name="data_retrieved_at">Data retrieved %s</string>
 </resources>
