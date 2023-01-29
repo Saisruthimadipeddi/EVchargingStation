@@ -20,6 +20,7 @@ import net.vonforst.evmap.viewmodel.Resource
 import net.vonforst.evmap.viewmodel.Status
 import net.vonforst.evmap.viewmodel.await
 import net.vonforst.evmap.viewmodel.getClusterDistance
+import java.time.Duration
 import java.time.Instant
 import kotlin.math.sqrt
 
@@ -77,8 +78,11 @@ class ChargeLocationsRepository(
     val api = MutableLiveData<ChargepointApi<ReferenceData>>().apply { value = api }
 
     // if zoom level is below this value, server-side clustering will be used (if the API provides it)
-    val serverSideClusteringThreshold = 9f
+    private val serverSideClusteringThreshold = 9f
     private fun shouldUseServerSideClustering(zoom: Float) = zoom < serverSideClusteringThreshold
+
+    // if cached data is available and more recent than this duration, API will not be queried
+    private val cacheSoftLimit = Duration.ofDays(1)
 
     val referenceData = this.api.switchMap { api ->
         when (api) {
@@ -227,7 +231,7 @@ class ChargeLocationsRepository(
                 chargeLocationsDao.insert(result.data!!)
             }
         }
-        return CacheLiveData(dbResult, apiResult)
+        return PreferCacheLiveData(dbResult, apiResult, cacheSoftLimit)
     }
 
     /**

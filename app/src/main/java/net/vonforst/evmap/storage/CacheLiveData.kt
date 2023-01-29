@@ -3,8 +3,11 @@ package net.vonforst.evmap.storage
 import android.util.Log
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MediatorLiveData
+import net.vonforst.evmap.model.ChargeLocation
 import net.vonforst.evmap.viewmodel.Resource
 import net.vonforst.evmap.viewmodel.Status
+import java.time.Duration
+import java.time.Instant
 
 /**
  * LiveData implementation that allows loading data both from a cache and an API.
@@ -56,6 +59,47 @@ class CacheLiveData<T>(cache: LiveData<T>, api: LiveData<Resource<T>>) :
                 Status.SUCCESS -> api
                 Status.ERROR -> Resource.error(api.message, cache)
                 Status.LOADING -> api  // should not occur
+            }
+        }
+    }
+}
+
+/**
+ * LiveData implementation that allows loading data both from a cache and an API.
+ *
+ * It first tries loading from cache, and if the result is newer than `cacheSoftLimit` it does not
+ * reload from the API.
+ */
+class PreferCacheLiveData(
+    cache: LiveData<ChargeLocation>,
+    val api: LiveData<Resource<ChargeLocation>>,
+    cacheSoftLimit: Duration
+) :
+    MediatorLiveData<Resource<ChargeLocation>>() {
+    init {
+        value = Resource.loading(null)
+        addSource(cache) { cacheRes ->
+            if (cacheRes != null) {
+                if (cacheRes.isDetailed && cacheRes.timeRetrieved > Instant.now() - cacheSoftLimit) {
+                    value = Resource.success(cacheRes)
+                } else {
+                    value = Resource.loading(cacheRes)
+                    loadFromApi(cacheRes)
+                }
+            } else {
+                loadFromApi(null)
+            }
+        }
+    }
+
+    private fun loadFromApi(
+        cache: ChargeLocation?
+    ) {
+        addSource(api) { apiRes ->
+            value = when (apiRes.status) {
+                Status.SUCCESS -> apiRes
+                Status.ERROR -> Resource.error(apiRes.message, cache)
+                Status.LOADING -> Resource.loading(cache)
             }
         }
     }
