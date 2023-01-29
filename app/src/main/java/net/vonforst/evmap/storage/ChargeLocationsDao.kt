@@ -46,6 +46,9 @@ abstract class ChargeLocationsDao {
     @Delete
     abstract suspend fun delete(vararg locations: ChargeLocation)
 
+    @Query("DELETE FROM chargelocation WHERE dataSource == :dataSource AND timeRetrieved <= :before AND NOT EXISTS (SELECT 1 FROM favorite WHERE favorite.chargerId = chargelocation.id)")
+    abstract suspend fun deleteOutdatedIfNotFavorite(dataSource: String, before: Long)
+
     @Query("SELECT * FROM chargelocation WHERE dataSource == :dataSource AND id == :id AND isDetailed == 1 AND timeRetrieved > :after")
     abstract fun getChargeLocationById(
         id: Long,
@@ -135,7 +138,7 @@ class ChargeLocationsRepository(
             emit(applyLocalClustering(result, zoom))
             if (result.status == Status.SUCCESS) {
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
-                    afterDate(),
+                    api.cacheLimitDate(),
                     *result.data!!.filterIsInstance(ChargeLocation::class.java)
                         .toTypedArray()
                 )
@@ -177,7 +180,7 @@ class ChargeLocationsRepository(
             emit(applyLocalClustering(result, zoom))
             if (result.status == Status.SUCCESS) {
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
-                    afterDate(),
+                    api.cacheLimitDate(),
                     *result.data!!.filterIsInstance(ChargeLocation::class.java)
                         .toTypedArray()
                 )
@@ -218,7 +221,7 @@ class ChargeLocationsRepository(
         val dbResult = chargeLocationsDao.getChargeLocationById(
             id,
             prefs.dataSource,
-            afterDate()
+            api.value!!.cacheLimitDate()
         )
         val apiResult = liveData {
             emit(Resource.loading(null))
@@ -230,14 +233,6 @@ class ChargeLocationsRepository(
             }
         }
         return PreferCacheLiveData(dbResult, apiResult, cacheSoftLimit)
-    }
-
-    /**
-     * Numeric date for database limit required limit on some APIs
-     */
-    private fun afterDate(): Long {
-        val cacheLimit = this.api.value!!.cacheLimit
-        return Instant.now().minus(cacheLimit).toEpochMilli()
     }
 
     fun getFilters(sp: StringProvider) = MediatorLiveData<List<Filter<FilterValue>>>().apply {
@@ -269,7 +264,7 @@ class ChargeLocationsRepository(
         bounds: LatLngBounds
     ) = try {
         val query = api.convertFiltersToSQL(filters)
-        val after = afterDate()
+        val after = api.cacheLimitDate()
         val sql = StringBuilder().apply {
             append("SELECT")
             if (query.requiresChargeCardQuery or query.requiresChargepointQuery) {
