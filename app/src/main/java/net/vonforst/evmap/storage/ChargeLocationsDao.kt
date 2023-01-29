@@ -57,13 +57,14 @@ abstract class ChargeLocationsDao {
     ): LiveData<ChargeLocation>
 
     @SkipQueryVerification
-    @Query("SELECT * FROM chargelocation WHERE dataSource == :dataSource AND Within(coordinates, BuildMbr(:lng1, :lat1, :lng2, :lat2))")
+    @Query("SELECT * FROM chargelocation WHERE dataSource == :dataSource AND Within(coordinates, BuildMbr(:lng1, :lat1, :lng2, :lat2)) AND timeRetrieved > :after")
     abstract fun getChargeLocationsInBounds(
         lat1: Double,
         lat2: Double,
         lng1: Double,
         lng2: Double,
-        dataSource: String
+        dataSource: String,
+        after: Long
     ): LiveData<List<ChargeLocation>>
 
     @RawQuery(observedEntities = [ChargeLocation::class])
@@ -126,7 +127,8 @@ class ChargeLocationsRepository(
                 bounds.northeast.latitude,
                 bounds.southwest.longitude,
                 bounds.northeast.longitude,
-                prefs.dataSource
+                prefs.dataSource,
+                api.cacheLimitDate()
             )
         } else {
             queryWithFilters(api, filters, bounds)
@@ -167,7 +169,8 @@ class ChargeLocationsRepository(
                 bounds.northeast.latitude,
                 bounds.southwest.longitude,
                 bounds.northeast.longitude,
-                prefs.dataSource
+                prefs.dataSource,
+                api.cacheLimitDate()
             )
         } else {
             queryWithFilters(api, filters, bounds)
