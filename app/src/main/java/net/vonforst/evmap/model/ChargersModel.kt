@@ -351,7 +351,8 @@ abstract class ChargerPhoto(open val id: String) : Parcelable {
 
 data class ChargeLocationCluster(
     val clusterCount: Int,
-    val coordinates: Coordinate
+    val coordinates: Coordinate,
+    val items: List<ChargeLocation>? = null
 ) : ChargepointListItem()
 
 @Parcelize

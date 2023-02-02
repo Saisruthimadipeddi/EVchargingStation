@@ -23,7 +23,10 @@ fun cluster(
         if (it.size == 1) {
             it.items.first().charger
         } else {
-            ChargeLocationCluster(it.size, Coordinate(it.position.latitude, it.position.longitude))
+            ChargeLocationCluster(
+                it.size,
+                Coordinate(it.position.latitude, it.position.longitude),
+                it.items.map { it.charger })
         }
     }
 }
@@ -31,8 +34,7 @@ fun cluster(
 private class ChargepointClusterItem(val charger: ChargeLocation) : ClusterItem {
     override fun getSnippet(): String? = null
 
-    override fun getTitle(): String? = charger.name
+    override fun getTitle(): String = charger.name
 
     override fun getPosition(): LatLng = LatLng(charger.coordinates.lat, charger.coordinates.lng)
-
 }
