@@ -79,6 +79,7 @@ class PreferCacheLiveData(
     init {
         value = Resource.loading(null)
         addSource(cache) { cacheRes ->
+            removeSource(cache)
             if (cacheRes != null) {
                 if (cacheRes.isDetailed && cacheRes.timeRetrieved > Instant.now() - cacheSoftLimit) {
                     value = Resource.success(cacheRes)
