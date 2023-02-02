@@ -24,6 +24,7 @@ class CacheLiveData<T>(cache: LiveData<T>, api: LiveData<Resource<T>>) :
         updateValue()
         addSource(cache) {
             cacheResult = it
+            removeSource(cache)
             updateValue()
         }
         addSource(api) {
