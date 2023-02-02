@@ -610,13 +610,15 @@ class MapFragment : Fragment(), OnMapReadyCallback, MapsActivity.FragmentCallbac
             var haveCache = false
             if (chargepoints != null) {
                 updateMap(chargepoints)
-                if (!chargepoints.isEmpty()) {
+                if (chargepoints.isNotEmpty()) {
                     haveCache = true
                 }
             }
             when (res.status) {
                 Status.ERROR -> {
-                    if (!haveCache) { // No error complaint if cached are shown.
+                    // No error message if cached chargers are shown.
+                    // TODO: this could later be improved by checking whether the current area is fully cached
+                    if (!haveCache) {
                         val view = view ?: return@Observer
 
                         connectionErrorSnackbar?.dismiss()
