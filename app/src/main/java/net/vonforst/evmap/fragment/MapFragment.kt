@@ -868,6 +868,7 @@ class MapFragment : Fragment(), OnMapReadyCallback, MapsActivity.FragmentCallbac
 
     override fun onMapReady(map: AnyMap) {
         this.map = map
+        vm.mapProjection = map.projection
         val context = this.context ?: return
         chargerIconGenerator = ChargerIconGenerator(context, map.bitmapDescriptorFactory)
 
@@ -892,12 +893,14 @@ class MapFragment : Fragment(), OnMapReadyCallback, MapsActivity.FragmentCallbac
         map.uiSettings.setIndoorLevelPickerEnabled(false)
 
         map.setOnCameraIdleListener {
+            vm.mapProjection = map.projection
             vm.mapPosition.value = MapPosition(
                 map.projection.visibleRegion.latLngBounds, map.cameraPosition.zoom
             )
             vm.reloadChargepoints()
         }
         map.setOnCameraMoveListener {
+            vm.mapProjection = map.projection
             vm.mapPosition.value = MapPosition(
                 map.projection.visibleRegion.latLngBounds, map.cameraPosition.zoom
             )

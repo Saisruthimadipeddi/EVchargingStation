@@ -1,9 +1,11 @@
 package net.vonforst.evmap.viewmodel
 
 import android.app.Application
+import android.graphics.Point
 import android.os.Parcelable
 import androidx.lifecycle.*
 import com.car2go.maps.AnyMap
+import com.car2go.maps.Projection
 import com.car2go.maps.model.LatLng
 import com.car2go.maps.model.LatLngBounds
 import com.mahc.custombottomsheetbehavior.BottomSheetBehaviorGoogleMapsLike
@@ -66,6 +68,7 @@ class MapViewModel(application: Application, private val state: SavedStateHandle
         prefs
     )
     private val availabilityRepo = AvailabilityRepository(application)
+    var mapProjection: Projection? = null
 
     val apiId = repo.api.map { it.id }
 
@@ -516,14 +519,14 @@ class MapViewModel(application: Application, private val state: SavedStateHandle
             val mapPosition = data.first
             val filters = data.second
 
+            val bounds = extendBounds(mapPosition.bounds)
             if (filterStatus.value == FILTERS_FAVORITES) {
                 // load favorites from local DB
-                val b = mapPosition.bounds
-                var chargers = db.favoritesDao().getFavoritesInBoundsAsync(
-                    b.southwest.latitude,
-                    b.northeast.latitude,
-                    b.southwest.longitude,
-                    b.northeast.longitude
+                val chargers = db.favoritesDao().getFavoritesInBoundsAsync(
+                    bounds.southwest.latitude,
+                    bounds.northeast.latitude,
+                    bounds.southwest.longitude,
+                    bounds.northeast.longitude
                 ).map { it.charger }
 
                 val clusterDistance = getClusterDistance(mapPosition.zoom)
@@ -537,7 +540,7 @@ class MapViewModel(application: Application, private val state: SavedStateHandle
                 return@throttleLatest
             }
 
-            val result = repo.getChargepoints(mapPosition.bounds, mapPosition.zoom, filters)
+            val result = repo.getChargepoints(bounds, mapPosition.zoom, filters)
             chargepointsInternal?.let { chargepoints.removeSource(it) }
             chargepointsInternal = result
             chargepoints.addSource(result) {
@@ -577,6 +580,20 @@ class MapViewModel(application: Application, private val state: SavedStateHandle
                 chargepoints.value = it
             }
         }
+
+    /**
+     * expands LatLngBounds beyond the viewport (triples the width and height)
+     */
+    private fun extendBounds(bounds: LatLngBounds): LatLngBounds {
+        val mapProjection = mapProjection ?: return bounds
+        val swPoint = mapProjection.toScreenLocation(bounds.southwest)
+        val nePoint = mapProjection.toScreenLocation(bounds.northeast)
+        val dx = nePoint.x - swPoint.x
+        val dy = nePoint.y - swPoint.y
+        val newSw = mapProjection.fromScreenLocation(Point(swPoint.x - dx, swPoint.y - dy))
+        val newNe = mapProjection.fromScreenLocation(Point(nePoint.x + dx, nePoint.y + dy))
+        return LatLngBounds(newSw, newNe)
+    }
 
     fun reloadAvailability() {
         triggerAvailabilityRefresh.value = true
