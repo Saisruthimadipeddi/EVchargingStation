@@ -4,6 +4,8 @@ import androidx.lifecycle.*
 import androidx.room.*
 import androidx.sqlite.db.SimpleSQLiteQuery
 import androidx.sqlite.db.SupportSQLiteQuery
+import co.anbora.labs.spatia.geometry.Mbr
+import co.anbora.labs.spatia.geometry.Polygon
 import com.car2go.maps.model.LatLng
 import com.car2go.maps.model.LatLngBounds
 import com.car2go.maps.util.SphericalUtil
@@ -67,6 +69,16 @@ abstract class ChargeLocationsDao {
         after: Long
     ): LiveData<List<ChargeLocation>>
 
+    @SkipQueryVerification
+    @Query("SELECT * FROM chargelocation WHERE dataSource == :dataSource AND PtDistWithin(coordinates, MakePoint(:lng, :lat, 4326), :radius) AND timeRetrieved > :after")
+    abstract fun getChargeLocationsRadius(
+        lat: Double,
+        lng: Double,
+        radius: Double,
+        dataSource: String,
+        after: Long
+    ): LiveData<List<ChargeLocation>>
+
     @RawQuery(observedEntities = [ChargeLocation::class])
     abstract fun getChargeLocationsCustom(query: SupportSQLiteQuery): LiveData<List<ChargeLocation>>
 }
@@ -113,6 +125,7 @@ class ChargeLocationsRepository(
     }
 
     private val chargeLocationsDao = db.chargeLocationsDao()
+    private val savedRegionDao = db.savedRegionDao()
 
     fun getChargepoints(
         bounds: LatLngBounds,
@@ -127,26 +140,53 @@ class ChargeLocationsRepository(
                 bounds.northeast.latitude,
                 bounds.southwest.longitude,
                 bounds.northeast.longitude,
-                prefs.dataSource,
+                api.id,
                 api.cacheLimitDate()
             )
         } else {
             queryWithFilters(api, filters, bounds)
         }.map { applyLocalClustering(it, zoom) }
+        val filtersSerialized =
+            filters?.filter { it.value != it.filter.defaultValue() }?.takeIf { it.isNotEmpty() }
+                ?.serialize()
+        val savedRegionResult = savedRegionDao.savedRegionCovers(
+            bounds.southwest.latitude,
+            bounds.northeast.latitude,
+            bounds.southwest.longitude,
+            bounds.northeast.longitude,
+            api.id,
+            api.cacheLimitDate(),
+            filtersSerialized
+        )
         val useClustering = shouldUseServerSideClustering(zoom)
         val apiResult = liveData {
             val refData = referenceData.await()
+            val time = Instant.now()
             val result = api.getChargepoints(refData, bounds, zoom, useClustering, filters)
             emit(applyLocalClustering(result, zoom))
             if (result.status == Status.SUCCESS) {
+                val chargers = result.data!!.filterIsInstance(ChargeLocation::class.java)
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
-                    api.cacheLimitDate(),
-                    *result.data!!.filterIsInstance(ChargeLocation::class.java)
-                        .toTypedArray()
+                    api.cacheLimitDate(), *chargers.toTypedArray()
                 )
+                if (!useClustering && chargers.size == result.data.size) {
+                    val region = Mbr(
+                        bounds.southwest.longitude,
+                        bounds.southwest.latitude,
+                        bounds.northeast.longitude,
+                        bounds.northeast.latitude, 4326
+                    ).asPolygon()
+                    savedRegionDao.insert(
+                        SavedRegion(
+                            region, api.id, time,
+                            filtersSerialized,
+                            false
+                        )
+                    )
+                }
             }
         }
-        return CacheLiveData(dbResult, apiResult)
+        return CacheLiveData(dbResult, apiResult, savedRegionResult).distinctUntilChanged()
     }
 
     fun getChargepointsRadius(
@@ -157,39 +197,59 @@ class ChargeLocationsRepository(
     ): LiveData<Resource<List<ChargepointListItem>>> {
         val api = api.value!!
 
-        // database does not support radius queries, so let's build a square query instead
-        val cornerDistance = radius * 1000 * sqrt(2.0)  // radius is given in km
-        val southwest = SphericalUtil.computeOffset(location, cornerDistance, 225.0)
-        val northeast = SphericalUtil.computeOffset(location, cornerDistance, 45.0)
-        val bounds = LatLngBounds(southwest, northeast)
-
         val dbResult = if (filters == null) {
-            chargeLocationsDao.getChargeLocationsInBounds(
-                bounds.southwest.latitude,
-                bounds.northeast.latitude,
-                bounds.southwest.longitude,
-                bounds.northeast.longitude,
-                prefs.dataSource,
+            chargeLocationsDao.getChargeLocationsRadius(
+                location.latitude,
+                location.longitude,
+                radius.toDouble(),
+                api.id,
                 api.cacheLimitDate()
             )
         } else {
-            queryWithFilters(api, filters, bounds)
+            queryWithFilters(api, filters, location, radius)
         }.map { applyLocalClustering(it, zoom) }
+        val filtersSerialized =
+            filters?.filter { it.value != it.filter.defaultValue() }?.takeIf { it.isNotEmpty() }
+                ?.serialize()
+        val savedRegionResult = savedRegionDao.savedRegionCoversRadius(
+            location.latitude,
+            location.longitude,
+            radius.toDouble(),
+            api.id,
+            api.cacheLimitDate(),
+            filtersSerialized
+        )
         val useClustering = shouldUseServerSideClustering(zoom)
         val apiResult = liveData {
             val refData = referenceData.await()
+            val time = Instant.now()
             val result =
                 api.getChargepointsRadius(refData, location, radius, zoom, useClustering, filters)
             emit(applyLocalClustering(result, zoom))
             if (result.status == Status.SUCCESS) {
+                val chargers = result.data!!.filterIsInstance(ChargeLocation::class.java)
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
-                    api.cacheLimitDate(),
-                    *result.data!!.filterIsInstance(ChargeLocation::class.java)
-                        .toTypedArray()
+                    api.cacheLimitDate(), *chargers.toTypedArray()
                 )
+                if (!useClustering && chargers.size == result.data.size) {
+                    val region = Polygon(
+                        savedRegionDao.makeCircle(
+                            location.latitude,
+                            location.longitude,
+                            radius.toDouble()
+                        )
+                    )
+                    savedRegionDao.insert(
+                        SavedRegion(
+                            region, api.id, time,
+                            filtersSerialized,
+                            false
+                        )
+                    )
+                }
             }
         }
-        return CacheLiveData(dbResult, apiResult)
+        return CacheLiveData(dbResult, apiResult, savedRegionResult).distinctUntilChanged()
     }
 
     private fun applyLocalClustering(
@@ -265,36 +325,58 @@ class ChargeLocationsRepository(
         api: ChargepointApi<ReferenceData>,
         filters: FilterValues,
         bounds: LatLngBounds
-    ) = try {
-        val query = api.convertFiltersToSQL(filters)
-        val after = api.cacheLimitDate()
-        val sql = StringBuilder().apply {
-            append("SELECT")
-            if (query.requiresChargeCardQuery or query.requiresChargepointQuery) {
-                append(" DISTINCT chargelocation.*")
-            } else {
-                append(" *")
-            }
-            append(" FROM chargelocation")
-            if (query.requiresChargepointQuery) {
-                append(" JOIN json_each(chargelocation.chargepoints) AS cp")
-            }
-            if (query.requiresChargeCardQuery) {
-                append(" JOIN json_each(chargelocation.chargecards) AS cc")
-            }
-            append(" WHERE dataSource == '${prefs.dataSource}'")
-            append(" AND Within(coordinates, BuildMbr(${bounds.southwest.longitude}, ${bounds.southwest.latitude}, ${bounds.northeast.longitude}, ${bounds.northeast.latitude})) ")
-            append(" AND timeRetrieved > ${after}")
-            append(query.query)
-        }.toString()
+    ): LiveData<List<ChargeLocation>> {
+        val region =
+            "BuildMbr(${bounds.southwest.longitude}, ${bounds.southwest.latitude}, ${bounds.northeast.longitude}, ${bounds.northeast.latitude})"
+        return queryWithFilters(api, filters, region)
+    }
 
-        chargeLocationsDao.getChargeLocationsCustom(
-            SimpleSQLiteQuery(
-                sql,
-                null
+    private fun queryWithFilters(
+        api: ChargepointApi<ReferenceData>,
+        filters: FilterValues,
+        location: LatLng,
+        radius: Int
+    ): LiveData<List<ChargeLocation>> {
+        val region = "MakeCircle(${location.latitude}, ${location.longitude}, $radius, 4326)"
+        return queryWithFilters(api, filters, region)
+    }
+
+    private fun queryWithFilters(
+        api: ChargepointApi<ReferenceData>,
+        filters: FilterValues,
+        regionSql: String
+    ): LiveData<List<ChargeLocation>> {
+        try {
+            val query = api.convertFiltersToSQL(filters)
+            val after = api.cacheLimitDate()
+            val sql = StringBuilder().apply {
+                append("SELECT")
+                if (query.requiresChargeCardQuery or query.requiresChargepointQuery) {
+                    append(" DISTINCT chargelocation.*")
+                } else {
+                    append(" *")
+                }
+                append(" FROM chargelocation")
+                if (query.requiresChargepointQuery) {
+                    append(" JOIN json_each(chargelocation.chargepoints) AS cp")
+                }
+                if (query.requiresChargeCardQuery) {
+                    append(" JOIN json_each(chargelocation.chargecards) AS cc")
+                }
+                append(" WHERE dataSource == '${prefs.dataSource}'")
+                append(" AND Within(coordinates, $regionSql) ")
+                append(" AND timeRetrieved > $after")
+                append(query.query)
+            }.toString()
+
+            return chargeLocationsDao.getChargeLocationsCustom(
+                SimpleSQLiteQuery(
+                    sql,
+                    null
+                )
             )
-        )
-    } catch (e: NotImplementedError) {
-        MutableLiveData()  // in this case we cannot get a DB result
+        } catch (e: NotImplementedError) {
+            return MutableLiveData()  // in this case we cannot get a DB result
+        }
     }
 }

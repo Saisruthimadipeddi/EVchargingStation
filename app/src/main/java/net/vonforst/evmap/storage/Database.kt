@@ -9,6 +9,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import co.anbora.labs.spatia.builder.SpatiaBuilder
 import co.anbora.labs.spatia.builder.SpatiaRoom
 import co.anbora.labs.spatia.geometry.GeometryConverters
 import net.vonforst.evmap.api.goingelectric.GEChargeCard
@@ -32,7 +33,8 @@ import net.vonforst.evmap.model.*
         GEChargeCard::class,
         OCMConnectionType::class,
         OCMCountry::class,
-        OCMOperator::class
+        OCMOperator::class,
+        SavedRegion::class
     ], version = 20
 )
 @TypeConverters(Converters::class, GeometryConverters::class)
@@ -42,6 +44,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun filterValueDao(): FilterValueDao
     abstract fun filterProfileDao(): FilterProfileDao
     abstract fun recentAutocompletePlaceDao(): RecentAutocompletePlaceDao
+    abstract fun savedRegionDao(): SavedRegionDao
 
     // GoingElectric API specific
     abstract fun geReferenceDataDao(): GEReferenceDataDao
@@ -52,32 +55,44 @@ abstract class AppDatabase : RoomDatabase() {
     companion object {
         private lateinit var context: Context
         private val database: AppDatabase by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
-            SpatiaRoom.databaseBuilder(context, AppDatabase::class.java, "evmap.db")
-                .addMigrations(
-                    MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6,
-                    MIGRATION_7, MIGRATION_8, MIGRATION_9, MIGRATION_10, MIGRATION_11,
-                    MIGRATION_12, MIGRATION_13, MIGRATION_14, MIGRATION_15, MIGRATION_16,
-                    MIGRATION_17, MIGRATION_18, MIGRATION_19, MIGRATION_20
-                )
+            initDb(SpatiaRoom.databaseBuilder(context, AppDatabase::class.java, "evmap.db"))
+        }
+
+        fun getInstance(context: Context): AppDatabase {
+            this.context = context.applicationContext
+            return database
+        }
+
+        /**
+         * creates an in-memory AppDatabase instance - only for testing
+         */
+        fun createInMemory(context: Context): AppDatabase {
+            return initDb(SpatiaRoom.inMemoryDatabaseBuilder(context, AppDatabase::class.java))
+        }
+
+        private fun initDb(builder: SpatiaRoom.Builder<AppDatabase>): AppDatabase {
+            return builder.addMigrations(
+                MIGRATION_2, MIGRATION_3, MIGRATION_4, MIGRATION_5, MIGRATION_6,
+                MIGRATION_7, MIGRATION_8, MIGRATION_9, MIGRATION_10, MIGRATION_11,
+                MIGRATION_12, MIGRATION_13, MIGRATION_14, MIGRATION_15, MIGRATION_16,
+                MIGRATION_17, MIGRATION_18, MIGRATION_19, MIGRATION_20
+            )
                 .addCallback(object : Callback() {
                     override fun onCreate(db: SupportSQLiteDatabase) {
                         // create default filter profile for each data source
                         db.execSQL("INSERT INTO `FilterProfile` (`dataSource`, `name`, `id`, `order`) VALUES ('goingelectric', 'FILTERS_CUSTOM', $FILTERS_CUSTOM, 0)")
                         db.execSQL("INSERT INTO `FilterProfile` (`dataSource`, `name`, `id`, `order`) VALUES ('openchargemap', 'FILTERS_CUSTOM', $FILTERS_CUSTOM, 0)")
                         // initialize spatialite columns
-                        db.query("SELECT InitSpatialMetaData();").moveToNext()
                         db.query("SELECT RecoverGeometryColumn('ChargeLocation', 'coordinates', 4326, 'POINT', 'XY');")
                             .moveToNext()
                         db.query("SELECT CreateSpatialIndex('ChargeLocation', 'coordinates');")
                             .moveToNext()
+                        db.query("SELECT RecoverGeometryColumn('SavedRegion', 'region', 4326, 'POLYGON', 'XY');")
+                            .moveToNext()
+                        db.query("SELECT CreateSpatialIndex('SavedRegion', 'region');")
+                            .moveToNext()
                     }
-                })
-                .build()
-        }
-
-        fun getInstance(context: Context): AppDatabase {
-            this.context = context.applicationContext
-            return database
+                }).build()
         }
 
         private val MIGRATION_2 = object : Migration(1, 2) {
@@ -405,7 +420,7 @@ abstract class AppDatabase : RoomDatabase() {
 
                     // recreate table to remove lat/lng columns
                     db.execSQL(
-                        "CREATE TABLE `ChargeLocationNew` (`id` INTEGER NOT NULL, `dataSource` TEXT NOT NULL, `name` TEXT NOT NULL, `coordinates` BLOB NOT NULL, `chargepoints` TEXT NOT NULL, `network` TEXT, `url` TEXT NOT NULL, `editUrl` TEXT, `verified` INTEGER NOT NULL, `barrierFree` INTEGER, `operator` TEXT, `generalInformation` TEXT, `amenities` TEXT, `locationDescription` TEXT, `photos` TEXT, `chargecards` TEXT, `license` TEXT, `timeRetrieved` INTEGER NOT NULL, `isDetailed` INTEGER NOT NULL, `city` TEXT, `country` TEXT, `postcode` TEXT, `street` TEXT, `fault_report_created` INTEGER, `fault_report_description` TEXT, `twentyfourSeven` INTEGER, `description` TEXT, `mostart` TEXT, `moend` TEXT, `tustart` TEXT, `tuend` TEXT, `westart` TEXT, `weend` TEXT, `thstart` TEXT, `thend` TEXT, `frstart` TEXT, `frend` TEXT, `sastart` TEXT, `saend` TEXT, `sustart` TEXT, `suend` TEXT, `hostart` TEXT, `hoend` TEXT, `freecharging` INTEGER, `freeparking` INTEGER, `descriptionShort` TEXT, `descriptionLong` TEXT, `chargepricecountry` TEXT, `chargepricenetwork` TEXT, `chargepriceplugTypes` TEXT, `networkUrl` TEXT, `chargerUrl` TEXT PRIMARY KEY(`id`, `dataSource`))"
+                        "CREATE TABLE `ChargeLocationNew` (`id` INTEGER NOT NULL, `dataSource` TEXT NOT NULL, `name` TEXT NOT NULL, `coordinates` BLOB NOT NULL, `chargepoints` TEXT NOT NULL, `network` TEXT, `url` TEXT NOT NULL, `editUrl` TEXT, `verified` INTEGER NOT NULL, `barrierFree` INTEGER, `operator` TEXT, `generalInformation` TEXT, `amenities` TEXT, `locationDescription` TEXT, `photos` TEXT, `chargecards` TEXT, `license` TEXT, `timeRetrieved` INTEGER NOT NULL, `isDetailed` INTEGER NOT NULL, `city` TEXT, `country` TEXT, `postcode` TEXT, `street` TEXT, `fault_report_created` INTEGER, `fault_report_description` TEXT, `twentyfourSeven` INTEGER, `description` TEXT, `mostart` TEXT, `moend` TEXT, `tustart` TEXT, `tuend` TEXT, `westart` TEXT, `weend` TEXT, `thstart` TEXT, `thend` TEXT, `frstart` TEXT, `frend` TEXT, `sastart` TEXT, `saend` TEXT, `sustart` TEXT, `suend` TEXT, `hostart` TEXT, `hoend` TEXT, `freecharging` INTEGER, `freeparking` INTEGER, `descriptionShort` TEXT, `descriptionLong` TEXT, `chargepricecountry` TEXT, `chargepricenetwork` TEXT, `chargepriceplugTypes` TEXT, `networkUrl` TEXT, `chargerUrl` TEXT, PRIMARY KEY(`id`, `dataSource`))"
                     )
                     db.query("SELECT AddGeometryColumn('ChargeLocationNew', 'coordinates', 4326, 'POINT', 'XY');")
                         .moveToNext()

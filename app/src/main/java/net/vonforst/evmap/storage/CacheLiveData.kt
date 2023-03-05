@@ -15,10 +15,15 @@ import java.time.Instant
  * It gives the cache result while loading, and then switches to the API result if the API call was
  * successful.
  */
-class CacheLiveData<T>(cache: LiveData<T>, api: LiveData<Resource<T>>) :
+class CacheLiveData<T>(
+    cache: LiveData<T>,
+    api: LiveData<Resource<T>>,
+    skipApi: LiveData<Boolean>? = null
+) :
     MediatorLiveData<Resource<T>>() {
     private var cacheResult: T? = null
     private var apiResult: Resource<T>? = null
+    private var skipApiResult: Boolean = false
 
     init {
         updateValue()
@@ -27,9 +32,23 @@ class CacheLiveData<T>(cache: LiveData<T>, api: LiveData<Resource<T>>) :
             removeSource(cache)
             updateValue()
         }
-        addSource(api) {
-            apiResult = it
-            updateValue()
+        if (skipApi == null) {
+            addSource(api) {
+                apiResult = it
+                updateValue()
+            }
+        } else {
+            addSource(skipApi) { skip ->
+                removeSource(skipApi)
+                skipApiResult = skip
+                updateValue()
+                if (!skip) {
+                    addSource(api) {
+                        apiResult = it
+                        updateValue()
+                    }
+                }
+            }
         }
     }
 
@@ -44,7 +63,11 @@ class CacheLiveData<T>(cache: LiveData<T>, api: LiveData<Resource<T>>) :
         } else if (cache != null && api == null) {
             Log.d("CacheLiveData", "cache has finished loading before API")
             // cache has finished loading before API
-            value = Resource.loading(cache)
+            if (skipApiResult) {
+                value = Resource.success(cache)
+            } else {
+                value = Resource.loading(cache)
+            }
         } else if (cache == null && api != null) {
             Log.d("CacheLiveData", "API has finished loading before cache")
             // API has finished loading before cache

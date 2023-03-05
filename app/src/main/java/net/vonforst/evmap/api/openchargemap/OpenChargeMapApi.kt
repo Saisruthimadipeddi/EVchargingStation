@@ -108,7 +108,7 @@ class OpenChargeMapApiWrapper(
     val api = OpenChargeMapApi.create(apikey, baseurl, context)
 
     override val name = "OpenChargeMap.org"
-    override val id = "open_charge_map"
+    override val id = "openchargemap"
 
     private fun formatMultipleChoice(value: MultipleChoiceFilterValue?) =
         if (value == null || value.all) null else value.values.joinToString(",")
