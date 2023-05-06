@@ -431,6 +431,12 @@ abstract class AppDatabase : RoomDatabase() {
 
                     db.execSQL("DROP TABLE `ChargeLocation`")
                     db.execSQL("ALTER TABLE `ChargeLocationNew` RENAME TO `ChargeLocation`")
+
+                    db.execSQL("CREATE TABLE IF NOT EXISTS `SavedRegion` (`region` BLOB NOT NULL, `dataSource` TEXT NOT NULL, `timeRetrieved` INTEGER NOT NULL, `filters` TEXT, `isDetailed` INTEGER NOT NULL, `id` INTEGER PRIMARY KEY AUTOINCREMENT)");
+                    db.query("SELECT AddGeometryColumn('SavedRegion', 'region', 4326, 'POLYGON', 'XY');")
+                        .moveToNext()
+                    db.query("SELECT CreateSpatialIndex('SavedRegion', 'region');")
+                        .moveToNext()
                 } finally {
                     db.setTransactionSuccessful()
                 }
