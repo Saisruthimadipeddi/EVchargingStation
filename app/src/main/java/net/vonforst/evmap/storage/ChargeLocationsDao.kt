@@ -171,7 +171,7 @@ class ChargeLocationsRepository(
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
                     cacheLimitDate(api), *chargers.toTypedArray()
                 )
-                if (!useClustering && chargers.size == result.data.items.size && result.data.isComplete) {
+                if (chargers.size == result.data.items.size && result.data.isComplete) {
                     val region = Mbr(
                         bounds.southwest.longitude,
                         bounds.southwest.latitude,
@@ -233,7 +233,7 @@ class ChargeLocationsRepository(
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
                     cacheLimitDate(api), *chargers.toTypedArray()
                 )
-                if (!useClustering && chargers.size == result.data.items.size && result.data.isComplete) {
+                if (chargers.size == result.data.items.size && result.data.isComplete) {
                     val region = Polygon(
                         savedRegionDao.makeCircle(
                             location.latitude,
