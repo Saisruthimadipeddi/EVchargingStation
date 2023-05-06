@@ -546,7 +546,7 @@ class MapViewModel(application: Application, private val state: SavedStateHandle
             chargepoints.addSource(result) {
                 val apiId = apiId.value
                 when (apiId) {
-                    "going_electric" -> {
+                    "goingelectric" -> {
                         val chargeCardsVal = filters.getMultipleChoiceValue("chargecards")!!
                         filteredChargeCards.value =
                             if (chargeCardsVal.all) null else chargeCardsVal.values.map { it.toLong() }
@@ -559,7 +559,8 @@ class MapViewModel(application: Application, private val state: SavedStateHandle
                             }.toSet()
                         filteredMinPower.value = filters.getSliderValue("min_power")
                     }
-                    "open_charge_map" -> {
+
+                    "openchargemap" -> {
                         val connectorsVal = filters.getMultipleChoiceValue("connectors")!!
                         filteredConnectors.value =
                             if (connectorsVal.all) null else connectorsVal.values.map {

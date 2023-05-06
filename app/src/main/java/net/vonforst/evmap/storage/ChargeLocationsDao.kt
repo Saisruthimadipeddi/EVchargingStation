@@ -12,6 +12,7 @@ import com.car2go.maps.util.SphericalUtil
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import net.vonforst.evmap.api.ChargepointApi
+import net.vonforst.evmap.api.ChargepointList
 import net.vonforst.evmap.api.StringProvider
 import net.vonforst.evmap.api.goingelectric.GEReferenceData
 import net.vonforst.evmap.api.goingelectric.GoingElectricApiWrapper
@@ -22,6 +23,7 @@ import net.vonforst.evmap.viewmodel.Resource
 import net.vonforst.evmap.viewmodel.Status
 import net.vonforst.evmap.viewmodel.await
 import net.vonforst.evmap.viewmodel.getClusterDistance
+import net.vonforst.evmap.viewmodel.singleSwitchMap
 import java.time.Duration
 import java.time.Instant
 import kotlin.math.sqrt
@@ -165,11 +167,11 @@ class ChargeLocationsRepository(
             val result = api.getChargepoints(refData, bounds, zoom, useClustering, filters)
             emit(applyLocalClustering(result, zoom))
             if (result.status == Status.SUCCESS) {
-                val chargers = result.data!!.filterIsInstance(ChargeLocation::class.java)
+                val chargers = result.data!!.items.filterIsInstance<ChargeLocation>()
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
                     api.cacheLimitDate(), *chargers.toTypedArray()
                 )
-                if (!useClustering && chargers.size == result.data.size) {
+                if (!useClustering && chargers.size == result.data.items.size && result.data.isComplete) {
                     val region = Mbr(
                         bounds.southwest.longitude,
                         bounds.southwest.latitude,
@@ -227,11 +229,11 @@ class ChargeLocationsRepository(
                 api.getChargepointsRadius(refData, location, radius, zoom, useClustering, filters)
             emit(applyLocalClustering(result, zoom))
             if (result.status == Status.SUCCESS) {
-                val chargers = result.data!!.filterIsInstance(ChargeLocation::class.java)
+                val chargers = result.data!!.items.filterIsInstance<ChargeLocation>()
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
                     api.cacheLimitDate(), *chargers.toTypedArray()
                 )
-                if (!useClustering && chargers.size == result.data.size) {
+                if (!useClustering && chargers.size == result.data.items.size && result.data.isComplete) {
                     val region = Polygon(
                         savedRegionDao.makeCircle(
                             location.latitude,
@@ -253,15 +255,20 @@ class ChargeLocationsRepository(
     }
 
     private fun applyLocalClustering(
-        result: Resource<List<ChargepointListItem>>,
+        result: Resource<ChargepointList>,
         zoom: Float
     ): Resource<List<ChargepointListItem>> {
-        val list = result.data ?: return result
-        val chargers = list.filterIsInstance<ChargeLocation>()
+        val list = result.data ?: return Resource(result.status, null, result.message)
+        val chargers = list.items.filterIsInstance<ChargeLocation>()
 
-        if (chargers.size != list.size) return result  // list already contains clusters
+        if (chargers.size != list.items.size) return Resource(
+            result.status,
+            list.items,
+            result.message
+        )  // list already contains clusters
 
-        return result.copy(data = applyLocalClustering(chargers, zoom))
+        val clustered = applyLocalClustering(chargers, zoom)
+        return Resource(result.status, clustered, result.message)
     }
 
     private fun applyLocalClustering(
@@ -345,9 +352,9 @@ class ChargeLocationsRepository(
         api: ChargepointApi<ReferenceData>,
         filters: FilterValues,
         regionSql: String
-    ): LiveData<List<ChargeLocation>> {
+    ): LiveData<List<ChargeLocation>> = referenceData.singleSwitchMap { refData ->
         try {
-            val query = api.convertFiltersToSQL(filters)
+            val query = api.convertFiltersToSQL(filters, refData)
             val after = api.cacheLimitDate()
             val sql = StringBuilder().apply {
                 append("SELECT")
@@ -369,14 +376,14 @@ class ChargeLocationsRepository(
                 append(query.query)
             }.toString()
 
-            return chargeLocationsDao.getChargeLocationsCustom(
+            chargeLocationsDao.getChargeLocationsCustom(
                 SimpleSQLiteQuery(
                     sql,
                     null
                 )
             )
         } catch (e: NotImplementedError) {
-            return MutableLiveData()  // in this case we cannot get a DB result
+            MutableLiveData()  // in this case we cannot get a DB result
         }
     }
 }

@@ -21,7 +21,7 @@ interface ChargepointApi<out T : ReferenceData> {
         zoom: Float,
         useClustering: Boolean,
         filters: FilterValues?
-    ): Resource<List<ChargepointListItem>>
+    ): Resource<ChargepointList>
 
     /**
      * Query for chargepoints within a given radius in kilometers
@@ -33,7 +33,7 @@ interface ChargepointApi<out T : ReferenceData> {
         zoom: Float,
         useClustering: Boolean,
         filters: FilterValues?
-    ): Resource<List<ChargepointListItem>>
+    ): Resource<ChargepointList>
 
     /**
      * Fetches detailed data for a specific charging site
@@ -47,7 +47,7 @@ interface ChargepointApi<out T : ReferenceData> {
 
     fun getFilters(referenceData: ReferenceData, sp: StringProvider): List<Filter<FilterValue>>
 
-    fun convertFiltersToSQL(filters: FilterValues): FiltersSQLQuery
+    fun convertFiltersToSQL(filters: FilterValues, referenceData: ReferenceData): FiltersSQLQuery
 
     val name: String
     val id: String
@@ -101,3 +101,9 @@ data class FiltersSQLQuery(
     val requiresChargepointQuery: Boolean,
     val requiresChargeCardQuery: Boolean
 )
+
+data class ChargepointList(val items: List<ChargepointListItem>, val isComplete: Boolean) {
+    companion object {
+        fun empty() = ChargepointList(emptyList(), true)
+    }
+}
