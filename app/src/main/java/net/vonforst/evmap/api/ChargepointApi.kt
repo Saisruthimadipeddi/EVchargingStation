@@ -56,14 +56,6 @@ interface ChargepointApi<out T : ReferenceData> {
      * Duration we are limited to if there is a required API local cache time limit.
      */
     val cacheLimit: Duration
-
-    /**
-     * Calculates current cache limit date as epoch milliseconds
-     */
-    fun cacheLimitDate(): Long {
-        val cacheLimit = this.cacheLimit
-        return Instant.now().minus(cacheLimit).toEpochMilli()
-    }
 }
 
 interface StringProvider {

@@ -143,7 +143,7 @@ class ChargeLocationsRepository(
                 bounds.southwest.longitude,
                 bounds.northeast.longitude,
                 api.id,
-                api.cacheLimitDate()
+                cacheLimitDate(api)
             )
         } else {
             queryWithFilters(api, filters, bounds)
@@ -157,7 +157,7 @@ class ChargeLocationsRepository(
             bounds.southwest.longitude,
             bounds.northeast.longitude,
             api.id,
-            api.cacheLimitDate(),
+            cacheSoftLimitDate(api),
             filtersSerialized
         )
         val useClustering = shouldUseServerSideClustering(zoom)
@@ -169,7 +169,7 @@ class ChargeLocationsRepository(
             if (result.status == Status.SUCCESS) {
                 val chargers = result.data!!.items.filterIsInstance<ChargeLocation>()
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
-                    api.cacheLimitDate(), *chargers.toTypedArray()
+                    cacheLimitDate(api), *chargers.toTypedArray()
                 )
                 if (!useClustering && chargers.size == result.data.items.size && result.data.isComplete) {
                     val region = Mbr(
@@ -205,7 +205,7 @@ class ChargeLocationsRepository(
                 location.longitude,
                 radius.toDouble(),
                 api.id,
-                api.cacheLimitDate()
+                cacheLimitDate(api)
             )
         } else {
             queryWithFilters(api, filters, location, radius)
@@ -218,7 +218,7 @@ class ChargeLocationsRepository(
             location.longitude,
             radius.toDouble(),
             api.id,
-            api.cacheLimitDate(),
+            cacheSoftLimitDate(api),
             filtersSerialized
         )
         val useClustering = shouldUseServerSideClustering(zoom)
@@ -231,7 +231,7 @@ class ChargeLocationsRepository(
             if (result.status == Status.SUCCESS) {
                 val chargers = result.data!!.items.filterIsInstance<ChargeLocation>()
                 chargeLocationsDao.insertOrReplaceIfNoDetailedExists(
-                    api.cacheLimitDate(), *chargers.toTypedArray()
+                    cacheLimitDate(api), *chargers.toTypedArray()
                 )
                 if (!useClustering && chargers.size == result.data.items.size && result.data.isComplete) {
                     val region = Polygon(
@@ -291,7 +291,7 @@ class ChargeLocationsRepository(
         val dbResult = chargeLocationsDao.getChargeLocationById(
             id,
             prefs.dataSource,
-            api.value!!.cacheLimitDate()
+            cacheLimitDate(api.value!!)
         )
         val apiResult = liveData {
             emit(Resource.loading(null))
@@ -355,7 +355,7 @@ class ChargeLocationsRepository(
     ): LiveData<List<ChargeLocation>> = referenceData.singleSwitchMap { refData ->
         try {
             val query = api.convertFiltersToSQL(filters, refData)
-            val after = api.cacheLimitDate()
+            val after = cacheLimitDate(api)
             val sql = StringBuilder().apply {
                 append("SELECT")
                 if (query.requiresChargeCardQuery or query.requiresChargepointQuery) {
@@ -385,5 +385,16 @@ class ChargeLocationsRepository(
         } catch (e: NotImplementedError) {
             MutableLiveData()  // in this case we cannot get a DB result
         }
+    }
+
+
+    private fun cacheLimitDate(api: ChargepointApi<ReferenceData>): Long {
+        val cacheLimit = api.cacheLimit
+        return Instant.now().minus(cacheLimit).toEpochMilli()
+    }
+
+    private fun cacheSoftLimitDate(api: ChargepointApi<ReferenceData>): Long {
+        val cacheLimit = maxOf(api.cacheLimit, Duration.ofDays(2))
+        return Instant.now().minus(cacheLimit).toEpochMilli()
     }
 }
