@@ -20,6 +20,8 @@ import retrofit2.http.Query
 import java.io.IOException
 import java.time.Duration
 
+private const val maxResults = 3000
+
 interface OpenChargeMapApi {
     @GET("poi/")
     suspend fun getChargepoints(
@@ -28,7 +30,7 @@ interface OpenChargeMapApi {
         @Query("minpowerkw") minPower: Double? = null,
         @Query("operatorid") operators: String? = null,
         @Query("statustypeid") statusType: String? = null,
-        @Query("maxresults") maxresults: Int = 500,
+        @Query("maxresults") maxresults: Int = maxResults,
         @Query("compact") compact: Boolean = true,
         @Query("verbose") verbose: Boolean = false
     ): Response<List<OCMChargepoint>>
@@ -43,7 +45,7 @@ interface OpenChargeMapApi {
         @Query("minpowerkw") minPower: Double? = null,
         @Query("operatorid") operators: String? = null,
         @Query("statustypeid") statusType: String? = null,
-        @Query("maxresults") maxresults: Int = 500,
+        @Query("maxresults") maxresults: Int = maxResults,
         @Query("compact") compact: Boolean = true,
         @Query("verbose") verbose: Boolean = false
     ): Response<List<OCMChargepoint>>
@@ -162,7 +164,7 @@ class OpenChargeMapApiWrapper(
                 excludeFaults,
                 refData
             )
-            return Resource.success(ChargepointList(result, data.size < 499))
+            return Resource.success(ChargepointList(result, data.size < maxResults))
         } catch (e: IOException) {
             return Resource.error(e.message, null)
         }

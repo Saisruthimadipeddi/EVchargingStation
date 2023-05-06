@@ -44,6 +44,7 @@ import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import kotlin.math.roundToInt
 
 @Parcelize
 data class MapPosition(val bounds: LatLngBounds, val zoom: Float) : Parcelable
@@ -583,14 +584,14 @@ class MapViewModel(application: Application, private val state: SavedStateHandle
         }
 
     /**
-     * expands LatLngBounds beyond the viewport (triples the width and height)
+     * expands LatLngBounds beyond the viewport (1.5x the width and height)
      */
     private fun extendBounds(bounds: LatLngBounds): LatLngBounds {
         val mapProjection = mapProjection ?: return bounds
         val swPoint = mapProjection.toScreenLocation(bounds.southwest)
         val nePoint = mapProjection.toScreenLocation(bounds.northeast)
-        val dx = nePoint.x - swPoint.x
-        val dy = nePoint.y - swPoint.y
+        val dx = ((nePoint.x - swPoint.x) * 0.25).roundToInt()
+        val dy = ((nePoint.y - swPoint.y) * 0.25).roundToInt()
         val newSw = mapProjection.fromScreenLocation(Point(swPoint.x - dx, swPoint.y - dy))
         val newNe = mapProjection.fromScreenLocation(Point(nePoint.x + dx, nePoint.y + dy))
         return LatLngBounds(newSw, newNe)
