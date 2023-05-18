@@ -72,7 +72,7 @@ abstract class ChargeLocationsDao {
     ): LiveData<List<ChargeLocation>>
 
     @SkipQueryVerification
-    @Query("SELECT * FROM chargelocation WHERE dataSource == :dataSource AND PtDistWithin(coordinates, MakePoint(:lng, :lat, 4326), :radius) AND timeRetrieved > :after")
+    @Query("SELECT * FROM chargelocation WHERE dataSource == :dataSource AND PtDistWithin(coordinates, MakePoint(:lng, :lat, 4326), :radius) AND timeRetrieved > :after ORDER BY Distance(coordinates, MakePoint(:lng, :lat, 4326))")
     abstract fun getChargeLocationsRadius(
         lat: Double,
         lng: Double,
@@ -199,16 +199,17 @@ class ChargeLocationsRepository(
     ): LiveData<Resource<List<ChargepointListItem>>> {
         val api = api.value!!
 
+        val radiusMeters = radius.toDouble() * 1000
         val dbResult = if (filters == null) {
             chargeLocationsDao.getChargeLocationsRadius(
                 location.latitude,
                 location.longitude,
-                radius.toDouble(),
+                radiusMeters,
                 api.id,
                 cacheLimitDate(api)
             )
         } else {
-            queryWithFilters(api, filters, location, radius)
+            queryWithFilters(api, filters, location, radiusMeters)
         }.map { applyLocalClustering(it, zoom) }
         val filtersSerialized =
             filters?.filter { it.value != it.filter.defaultValue() }?.takeIf { it.isNotEmpty() }
@@ -216,7 +217,7 @@ class ChargeLocationsRepository(
         val savedRegionResult = savedRegionDao.savedRegionCoversRadius(
             location.latitude,
             location.longitude,
-            radius.toDouble(),
+            radiusMeters * 0.999,  // to account for float rounding errors
             api.id,
             cacheSoftLimitDate(api),
             filtersSerialized
@@ -238,7 +239,7 @@ class ChargeLocationsRepository(
                         savedRegionDao.makeCircle(
                             location.latitude,
                             location.longitude,
-                            radius.toDouble()
+                            radiusMeters
                         )
                     )
                     savedRegionDao.insert(
@@ -334,7 +335,7 @@ class ChargeLocationsRepository(
         bounds: LatLngBounds
     ): LiveData<List<ChargeLocation>> {
         val region =
-            "BuildMbr(${bounds.southwest.longitude}, ${bounds.southwest.latitude}, ${bounds.northeast.longitude}, ${bounds.northeast.latitude})"
+            "Within(coordinates, BuildMbr(${bounds.southwest.longitude}, ${bounds.southwest.latitude}, ${bounds.northeast.longitude}, ${bounds.northeast.latitude}))"
         return queryWithFilters(api, filters, region)
     }
 
@@ -342,16 +343,20 @@ class ChargeLocationsRepository(
         api: ChargepointApi<ReferenceData>,
         filters: FilterValues,
         location: LatLng,
-        radius: Int
+        radius: Double
     ): LiveData<List<ChargeLocation>> {
-        val region = "MakeCircle(${location.latitude}, ${location.longitude}, $radius, 4326)"
-        return queryWithFilters(api, filters, region)
+        val region =
+            "PtDistWithin(coordinates, MakePoint(${location.longitude}, ${location.latitude}, 4326), ${radius})"
+        val order =
+            "ORDER BY Distance(coordinates, MakePoint(${location.longitude}, ${location.latitude}, 4326))"
+        return queryWithFilters(api, filters, region, order)
     }
 
     private fun queryWithFilters(
         api: ChargepointApi<ReferenceData>,
         filters: FilterValues,
-        regionSql: String
+        regionSql: String,
+        orderSql: String? = null
     ): LiveData<List<ChargeLocation>> = referenceData.singleSwitchMap { refData ->
         try {
             val query = api.convertFiltersToSQL(filters, refData)
@@ -371,9 +376,10 @@ class ChargeLocationsRepository(
                     append(" JOIN json_each(chargelocation.chargecards) AS cc")
                 }
                 append(" WHERE dataSource == '${prefs.dataSource}'")
-                append(" AND Within(coordinates, $regionSql) ")
+                append(" AND $regionSql")
                 append(" AND timeRetrieved > $after")
                 append(query.query)
+                orderSql?.let { append(" " + orderSql) }
             }.toString()
 
             chargeLocationsDao.getChargeLocationsCustom(
