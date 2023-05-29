@@ -149,6 +149,7 @@ inline fun <X, Y> LiveData<X>.singleSwitchMap(crossinline transform: (X) -> Live
     val result = MediatorLiveData<Y>()
     result.addSource(this@singleSwitchMap, object : Observer<X> {
         override fun onChanged(t: X) {
+            if (t == null) return
             result.removeSource(this@singleSwitchMap)
             transform(t)?.let { transformed ->
                 result.addSource(transformed) {
