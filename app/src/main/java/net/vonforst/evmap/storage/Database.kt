@@ -417,7 +417,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // add geometry column and set it based on lat/lng columns
                     db.query("SELECT AddGeometryColumn('ChargeLocation', 'coordinates', 4326, 'POINT', 'XY');")
                         .moveToNext()
-                    db.execSQL("UPDATE `ChargeLocation` SET `coordinates` = GeomFromText('POINT('||\"lat\"||' '||\"lng\"||')',4326);")
+                    db.execSQL("UPDATE `ChargeLocation` SET `coordinates` = GeomFromText('POINT('||\"lng\"||' '||\"lat\"||')',4326);")
 
                     // recreate table to remove lat/lng columns
                     db.execSQL(
