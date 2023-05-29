@@ -408,8 +408,9 @@ abstract class AppDatabase : RoomDatabase() {
 
         private val MIGRATION_20 = object : Migration(19, 20) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.beginTransaction()
                 try {
+                    db.beginTransaction()
+                    
                     // init spatialite
                     db.query("SELECT InitSpatialMetaData();").moveToNext()
 
@@ -438,10 +439,10 @@ abstract class AppDatabase : RoomDatabase() {
                         .moveToNext()
                     db.query("SELECT CreateSpatialIndex('SavedRegion', 'region');")
                         .moveToNext()
-                } finally {
                     db.setTransactionSuccessful()
+                } finally {
+                    db.endTransaction()
                 }
-                db.endTransaction()
             }
         }
     }
